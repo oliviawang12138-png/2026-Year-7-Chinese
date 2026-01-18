@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pinyin Quest - Learning Adventure</title>
+    <style>
+        :root {
+            --primary: #3498db;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+            --warning: #f1c40f;
+            --dark: #2c3e50;
+        }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #ecf0f1; margin: 0; text-align: center; overflow-x: hidden; }
+        .screen { display: none; padding: 20px; animation: fadeIn 0.5s; }
+        .active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Menu Styles */
+        .menu-card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); display: inline-block; margin-top: 50px; }
+        .btn { padding: 15px 30px; font-size: 1.1rem; cursor: pointer; border: none; border-radius: 10px; margin: 10px; transition: 0.3s; color: white; font-weight: bold; }
+        .btn-1 { background: var(--primary); }
+        .btn-2 { background: var(--success); }
+        .btn-3 { background: var(--warning); color: var(--dark); }
+        .btn-home { background: #95a5a6; padding: 8px 15px; font-size: 0.9rem; }
+        .btn:hover { transform: scale(1.05); filter: brightness(1.1); }
+
+        /* Game 1: Audio Match */
+        .img-box { font-size: 100px; margin: 20px; border: 2px dashed #ccc; display: inline-block; padding: 20px; border-radius: 15px; }
+        .options-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; max-width: 500px; margin: 0 auto; }
+        
+        /* Game 2: Matching */
+        .matching-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; max-width: 800px; margin: 20px auto; }
+        .card { background: white; padding: 20px; border-radius: 8px; cursor: pointer; border: 2px solid #ddd; font-size: 1.1rem; min-height: 50px; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+        .card.selected { border-color: var(--primary); background: #ebf5fb; }
+        .card.correct { background: var(--success); color: white; visibility: hidden; }
+        .card.wrong { background: var(--danger); color: white; animation: shake 0.4s; }
+        @keyframes shake { 0%, 100% {transform: translateX(0);} 25% {transform: translateX(-5px);} 75% {transform: translateX(5px);} }
+
+        /* Game 3: Plane */
+        #gameCanvas { background: #001f3f; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        .quiz-ui { margin-top: 10px; background: white; padding: 20px; border-radius: 15px; display: inline-block; max-width: 500px; }
+
+        .timer { font-size: 24px; font-weight: bold; color: var(--danger); margin: 10px; }
+        .feedback { font-weight: bold; margin: 10px; height: 20px; }
+    </style>
+</head>
+<body>
+
+    <div id="menu-screen" class="screen active">
+        <div class="menu-card">
+            <h1>🐉 Pinyin Quest</h1>
+            <p>Welcome, young warrior! Choose your challenge:</p>
+            <button class="btn btn-1" onclick="startLevel(1)">Level 1: Audio Match</button><br>
+            <button class="btn btn-2" onclick="startLevel(2)">Level 2: Speed Pairing (24s)</button><br>
+            <button class="btn btn-3" onclick="startLevel(3)">Level 3: Pinyin Fighter</button>
+        </div>
+    </div>
+
+    <div id="game1-screen" class="screen">
+        <button class="btn btn-home" onclick="goHome()">Back to Menu</button>
+        <h2>Level 1: Listen & Choose</h2>
+        <div class="img-box" id="g1-img">👋</div>
+        <p>Click the button to hear the word, then pick the correct Pinyin:</p>
+        <button class="btn btn-1" onclick="playG1Sound()">🔊 Play Sound</button>
+        <div class="options-grid" id="g1-options"></div>
+        <div id="g1-feedback" class="feedback"></div>
+    </div>
+
+    <div id="game2-screen" class="screen">
+        <button class="btn btn-home" onclick="goHome()">Back to Menu</button>
+        <h2>Level 2: Quick Match Challenge</h2>
+        <p>Match the Pinyin with English. Avoid the bombs!</p>
+        <div class="timer" id="g2-timer">Time: 0s (Goal: < 24s)</div>
+        <div id="g2-bomb-alert" style="color:red; display:none; font-weight:bold;">💣 BOMB! +3 seconds penalty!</div>
+        <div class="matching-grid" id="g2-grid"></div>
+    </div>
+
+    <div id="game3-screen" class="screen">
+        <button class="btn btn-home" onclick="goHome()">Back to Menu</button>
+        <h2>Level 3: Pinyin Fighter</h2>
+        <canvas id="gameCanvas" width="600" height="300"></canvas>
+        <div class="quiz-ui" id="g3-quiz">
+            <h3 id="g3-question">Loading...</h3>
+            <div id="g3-options"></div>
+        </div>
+        <p>Score: <span id="g3-score">0</span> | Progress: <span id="g3-progress">0%</span></p>
+    </div>
+
+    <script>
+        const vocab = [
+            { cn: "nǐ hǎo", en: "Hello", icon: "👋" },
+            { cn: "zài jiàn", en: "Goodbye", icon: "🙋" },
+            { cn: "lǎo shī", en: "Teacher", icon: "👩‍🏫" },
+            { cn: "míng zi", en: "Name", icon: "📛" },
+            { cn: "hěn hǎo", en: "Very good", icon: "😊" },
+            { cn: "bù hǎo", en: "Not good", icon: "☹️" },
+            { cn: "yī bān bān", en: "So-so", icon: "😐" }
+        ];
+
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        function goHome() { location.reload(); }
+
+        function startLevel(lv) {
+            if(lv === 1) initGame1();
+            if(lv === 2) initGame2();
+            if(lv === 3) initGame3();
+            showScreen('game' + lv + '-screen');
+        }
+
+        // --- Game 1 Logic ---
+        let currentG1Item;
+        function initGame1() {
+            currentG1Item = vocab[Math.floor(Math.random() * vocab.length)];
+            document.getElementById('g1-img').innerText = currentG1Item.icon;
+            let options = [currentG1Item.cn, vocab[(vocab.indexOf(currentG1Item)+1)%vocab.length].cn, "xiè xie", "shén me"];
+            options.sort(() => Math.random() - 0.5);
+            
+            const container = document.getElementById('g1-options');
+            container.innerHTML = '';
+            options.forEach(opt => {
+                const b = document.createElement('button');
+                b.className = 'btn btn-1';
+                b.innerText = opt;
+                b.onclick = () => {
+                    if(opt === currentG1Item.cn) {
+                        document.getElementById('g1-feedback').style.color = "green";
+                        document.getElementById('g1-feedback').innerText = "Correct! Well done! 🎉";
+                        setTimeout(initGame1, 1000);
+                    } else {
+                        document.getElementById('g1-feedback').style.color = "red";
+                        document.getElementById('g1-feedback').innerText = "Try again! ❌";
+                    }
+                };
+                container.appendChild(b);
+            });
+        }
+        function playG1Sound() {
+            const msg = new SpeechSynthesisUtterance(currentG1Item.cn);
+            msg.lang = 'zh-CN';
+            window.speechSynthesis.speak(msg);
+        }
+
+        // --- Game 2 Logic ---
+        let g2Seconds = 0;
+        let g2Interval;
+        let g2Selected = [];
+        function initGame2() {
+            const gameData = vocab.slice(0, 6);
+            let cards = [];
+            gameData.forEach(d => {
+                cards.push({ text: d.cn, match: d.en });
+                cards.push({ text: d.en, match: d.cn });
+            });
+            cards.sort(() => Math.random() - 0.5);
+            const grid = document.getElementById('g2-grid');
+            grid.innerHTML = '';
+            cards.forEach(c => {
+                const div = document.createElement('div');
+                div.className = 'card';
+                div.innerText = c.text;
+                div.onclick = () => handleG2Click(div, c);
+                grid.appendChild(div);
+            });
+            g2Interval = setInterval(() => {
+                g2Seconds++;
+                document.getElementById('g2-timer').innerText = `Time: ${g2Seconds}s (Goal: < 24s)`;
+            }, 1000);
+        }
+
+        function handleG2Click(el, data) {
+            if (el.classList.contains('correct') || g2Selected.includes(el)) return;
+            el.classList.add('selected');
+            g2Selected.push({el, data});
+            if (g2Selected.length === 2) {
+                if (g2Selected[0].data.match === g2Selected[1].data.text) {
+                    g2Selected.forEach(s => s.el.className = 'card correct');
+                    g2Selected = [];
+                    if (document.querySelectorAll('.card.correct').length === 12) {
+                        clearInterval(g2Interval);
+                        if(g2Seconds <= 24) alert("Legendary! Finished in " + g2Seconds + "s! You passed!");
+                        else alert("Time: " + g2Seconds + "s. Too slow! Try to beat 24 seconds!");
+                        goHome();
+                    }
+                } else {
+                    g2Selected.forEach(s => s.el.classList.add('wrong'));
+                    g2Seconds += 3;
+                    document.getElementById('g2-bomb-alert').style.display = 'block';
+                    setTimeout(() => {
+                        g2Selected.forEach(s => s.el.classList.remove('wrong', 'selected'));
+                        g2Selected = [];
+                        document.getElementById('g2-bomb-alert').style.display = 'none';
+                    }, 500);
+                }
+            }
+        }
+
+        // --- Game 3 Logic ---
+        let g3Score = 0;
+        function initGame3() {
+            const questions = [
+                { q: "When j, q, x meet ü:", a: "Remove the dots", b: "Keep the dots", c: "Change ü to u", correct: "a" },
+                { q: "Where do you put the tone mark?", a: "On Initials", b: "On Finals (vowels)", c: "Anywhere", correct: "b" },
+                { q: "On Lantern Festival, people eat:", a: "Dumplings", b: "Tang Yuan", c: "Mooncakes", correct: "b" },
+                { q: "Pinyin for 'Teacher Wang':", a: "Wáng lǎo shī", b: "Wáng láo shì", c: "Wāng lǎo shī", correct: "a" },
+                { q: "Which one means 'So-so'?", a: "hěn hǎo", b: "yī bān bān", c: "bù hǎo", correct: "b" }
+            ];
+            let qIdx = 0;
+            function nextQ() {
+                if (qIdx >= questions.length) {
+                    const rate = (g3Score / questions.length) * 100;
+                    alert("Mission End! Accuracy: " + rate + "%");
+                    if(rate >= 80) alert("Victory! You are a Pinyin Master!");
+                    else alert("Mission Failed! Need 80% to pass. Try again!");
+                    goHome();
+                    return;
+                }
+                const curr = questions[qIdx];
+                document.getElementById('g3-question').innerText = curr.q;
+                const opts = document.getElementById('g3-options');
+                opts.innerHTML = '';
+                ['a', 'b', 'c'].forEach(key => {
+                    const b = document.createElement('button');
+                    b.className = 'btn btn-3';
+                    b.style.display = "block"; b.style.width = "100%";
+                    b.innerText = curr[key];
+                    b.onclick = () => {
+                        if(key === curr.correct) { g3Score++; alert("DIRECT HIT! 🚀"); }
+                        else { alert("MISSED! 💣"); }
+                        qIdx++;
+                        document.getElementById('g3-score').innerText = g3Score;
+                        document.getElementById('g3-progress').innerText = Math.round((qIdx/questions.length)*100) + "%";
+                        nextQ();
+                    };
+                    opts.appendChild(b);
+                });
+            }
+            nextQ();
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            function draw() {
+                ctx.fillStyle = "#001f3f"; ctx.fillRect(0,0,600,300);
+                ctx.font = "40px Arial"; ctx.fillText("✈️", 270, 250);
+                ctx.fillText("☁️", (Date.now()/20)%700 - 100, 50);
+                requestAnimationFrame(draw);
+            }
+            draw();
+        }
+    </script>
+</body>
+</html>
